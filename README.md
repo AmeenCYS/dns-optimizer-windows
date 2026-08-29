@@ -1,83 +1,240 @@
 # DNS Optimizer for Windows 10
 
-`DNSOptimizer.ps1` is a Windows PowerShell 5.1-compatible, native DNS benchmarker and optional DNS switcher. It uses `Resolve-DnsName -Server` and `System.Diagnostics.Stopwatch` to measure real DNS query latency. It does not use ping and it changes only DNS server addresses.
+Automatic DNS benchmarking and safe DNS switching for Windows 10. The project uses only built-in Windows PowerShell networking commands and does not require third-party software.
 
-## Safe first command
+هذا البرنامج يفحص أداء مزودي DNS من جهازك الحقيقي، ثم يختار الأفضل بشكل محافظ. الوضع الافتراضي للسكربت هو الفحص فقط، ولا يتم تغيير DNS إلا مع `-Apply` أو `-ForceApply` أو `-Restore`.
 
-Open Windows PowerShell and run this first:
+## What it does
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-cd "C:\path\to\DNSOptimizer"
-.\DNSOptimizer.ps1 -TestOnly
+- Sends real DNS queries with `Resolve-DnsName -Server`; it does not use ping as a DNS benchmark.
+- Performs 40 queries per provider in each of 3 rounds, with a warm-up phase excluded from measurements.
+- Cycles through diverse domains and calculates success, failures, timeout percentage, minimum, median, average, p95, maximum, and standard deviation.
+- Tests IPv4 primary resolvers and alternates IPv4/IPv6 primary resolvers when usable IPv6 connectivity is detected.
+- Detects the active physical adapter, prefers Ethernet, and ignores common Hyper-V, WSL, VPN, VMware, and VirtualBox adapters.
+- Changes only DNS server addresses. It does not change IP addresses, routes, gateways, DHCP, MTU, MSS, proxy, firewall, or IPv6 enablement.
+- Saves the previous IPv4/IPv6 DNS configuration before applying a change.
+- Flushes and verifies DNS after a change; failed verification triggers automatic rollback.
+
+## First installation: command-line steps
+
+### 1. Put the project in a folder
+
+Download the repository ZIP from GitHub, or clone it if Git is already installed. Extract it so the folder contains:
+
+```text
+DNSOptimizer.ps1
+Install-DNSOptimizerTask.ps1
+Uninstall-DNSOptimizerTask.ps1
+README.md
+.gitignore
+SECURITY.md
 ```
 
-Replace the path with the folder containing these files. If no mode is supplied, the script also behaves as test-only. Test-only mode never calls `Set-DnsClientServerAddress`.
-
-The benchmark performs a small warm-up, then 40 real DNS queries per provider in each of 3 rounds. Domains are cycled through a diverse list. If usable IPv6 connectivity exists, IPv4 and IPv6 primary resolvers are alternated; otherwise only IPv4 is tested and IPv6 settings are left alone.
-
-## Winner selection and anti-flapping
-
-Each round calculates successes, failures, timeout percentage, minimum, median, average, p95, maximum, and standard deviation. Resolvers above the configured failure limit or with excessive instability are rejected. Ranking prioritizes reliability, then median latency, average latency, and p95 latency.
-
-A winner normally must win at least 2 of 3 rounds. If there is no majority, an aggregate winner is used only when it clearly beats the next eligible provider. `-Apply` compares the winner with the current resolver and switches only when the winner is at least 8 ms faster or at least 15% faster. Use `-ForceApply` to bypass that improvement threshold while retaining reliability and stability checks.
-
-## Commands
+For the original local project folder:
 
 ```powershell
-# Benchmark and display results; never change DNS.
-.\DNSOptimizer.ps1 -TestOnly
+Set-Location 'C:\Users\AmeenCYS\Documents\Codex\2026-08-29\files-pasted-by-the-user-build\outputs'
+```
 
-# Benchmark, then apply only when reliability and improvement thresholds pass.
-.\DNSOptimizer.ps1 -Apply
+For another location, replace the path with the folder where the files were extracted.
 
-# Benchmark and apply an eligible winner regardless of improvement threshold.
-.\DNSOptimizer.ps1 -ForceApply
+### 2. Run the first safe test
+
+This command benchmarks DNS and never changes network settings:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\DNSOptimizer.ps1 -TestOnly
+```
+
+If no mode is supplied, the script is also test-only:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\DNSOptimizer.ps1
+```
+
+Review the displayed table before allowing automatic changes.
+
+### 3. Install automatic operation
+
+Open **Windows PowerShell as Administrator**, move to the project folder, and run:
+
+```powershell
+Set-Location 'C:\Users\AmeenCYS\Documents\Codex\2026-08-29\files-pasted-by-the-user-build\outputs'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-DNSOptimizerTask.ps1 -ScheduleDays 7
+```
+
+The installer copies `DNSOptimizer.ps1` to `C:\ProgramData\DNSOptimizer` and creates a scheduled task named `DNS Optimizer`. The task runs with highest privileges as SYSTEM, once every 7 days, starts after a missed run, does not wake the computer, and ignores overlapping instances.
+
+For a different interval, pass a positive number of days, for example:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-DNSOptimizerTask.ps1 -ScheduleDays 1
+```
+
+### 4. Verify the task
+
+```powershell
+Get-ScheduledTask -TaskName 'DNS Optimizer' |
+    Select-Object TaskName, State
+
+$task = Get-ScheduledTask -TaskName 'DNS Optimizer'
+$task.Actions | Format-List Execute, Arguments
+
+Get-ScheduledTaskInfo -TaskName 'DNS Optimizer' |
+    Select-Object LastRunTime, LastTaskResult, NextRunTime
+```
+
+The task should be `Ready`. Its action should contain `DNSOptimizer.ps1 -Apply`. A `LastTaskResult` of `0` means the last run completed successfully.
+
+### 5. Test the scheduled task now (optional)
+
+This starts the real `-Apply` workflow and may change DNS if the winner passes all checks:
+
+```powershell
+Start-ScheduledTask -TaskName 'DNS Optimizer'
+```
+
+The full benchmark may take several minutes. Do not start another copy while it is `Running`.
+
+## Normal commands
+
+Run these from the folder containing the scripts:
+
+```powershell
+# Safe benchmark only; never changes DNS.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\DNSOptimizer.ps1 -TestOnly
+
+# Benchmark and apply only when the improvement threshold is exceeded.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\DNSOptimizer.ps1 -Apply
+
+# Apply an eligible winner regardless of the improvement threshold.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\DNSOptimizer.ps1 -ForceApply
 
 # Restore the most recent backup.
-.\DNSOptimizer.ps1 -Restore
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\DNSOptimizer.ps1 -Restore
 
-# Display recent history.
-.\DNSOptimizer.ps1 -ShowHistory
+# Show recent benchmark history.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\DNSOptimizer.ps1 -ShowHistory
 
-# Include per-query diagnostic output.
-.\DNSOptimizer.ps1 -TestOnly -Verbose
+# Include detailed per-query diagnostic output.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\DNSOptimizer.ps1 -TestOnly -Verbose
 ```
 
-`-Apply`, `-ForceApply`, and `-Restore` require Administrator rights. The script asks whether to relaunch elevated only for those modes. Test-only mode does not request elevation; if `C:\ProgramData` is not writable, its read-only logs are placed beside the script in `DNSOptimizerData`.
+`-TestOnly` is the default behavior. Only `-Apply`, `-ForceApply`, and `-Restore` can change DNS. Apply and restore modes require Administrator rights; the script can ask to relaunch itself elevated. Test-only mode does not request elevation. If `C:\ProgramData` is not writable during a read-only run, logs fall back to a local `DNSOptimizerData` folder beside the script.
 
-Before a change, the current IPv4 and IPv6 DNS server lists are saved to `dns-backup.json`. After applying, the script flushes the cache, verifies the configured addresses, queries the new resolver several times, and confirms normal system resolution. Any verification failure triggers automatic restoration and another cache flush.
+## How the benchmark works
 
-## Scheduled task
+Each provider receives a small warm-up, followed by 40 timed DNS requests per round. The domains are rotated through Google, Microsoft, GitHub, Cloudflare, Wikipedia, Amazon, Reddit, YouTube, Apple, and Bing. Each query is sent directly to the provider's primary resolver with a bounded timeout. A failed query is recorded and does not crash the benchmark.
 
-Run the installer from an elevated Windows PowerShell window:
+The script runs 3 complete rounds. Results are ranked by reliability first, then median latency, average latency, and p95 latency. Providers over the configured failure percentage or with excessive latency instability are rejected. A normal winner must win at least 2 of 3 rounds; an aggregate result is accepted without a majority only when it clearly beats the next eligible provider.
+
+### Why DNS query latency instead of ping?
+
+Ping measures ICMP/network path latency to an IP address. It does not measure whether a DNS resolver can receive, process, and return a DNS answer. This project times actual DNS lookups using `Resolve-DnsName -Server`, so the result reflects the operation that matters to web browsing and applications.
+
+## Anti-flapping behavior
+
+Before applying a winner, the script identifies the current DNS configuration and benchmarks its first configured resolver when possible. With `-Apply`, the winner must be at least:
+
+- `$MinimumImprovementMs` milliseconds faster by median; or
+- `$MinimumImprovementPercent` percent faster by median.
+
+The defaults are 8 ms and 15%. If neither threshold is met, the script logs and displays `NO_CHANGE_BELOW_THRESHOLD`. Use `-ForceApply` only when you intentionally want to bypass this improvement test; reliability and stability checks still apply.
+
+## IPv4, IPv6, and adapter safety
+
+The script first checks whether IPv6 DNS connectivity is usable. If it is not, IPv6 DNS settings are not changed. It does not disable IPv6. IPv4 and IPv6 DNS lists are backed up independently.
+
+The selected adapter is an active physical adapter with a default gateway. Ethernet is preferred when several candidates exist. Common virtual and VPN adapter names are ignored, including Hyper-V and WSL. The `vEthernet (WSL)` adapter is therefore not modified.
+
+## Backup, verification, and rollback
+
+Before a DNS change, the current IPv4 and IPv6 server lists are saved to `dns-backup.json`. After applying the winner, the script flushes the DNS cache, verifies the configured server addresses, sends several direct DNS queries, and confirms normal system resolution. Any verification failure triggers automatic restoration and another cache flush.
+
+To manually restore the last saved configuration:
 
 ```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-cd "C:\path\to\DNSOptimizer"
-.\Install-DNSOptimizerTask.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\DNSOptimizer.ps1 -Restore
 ```
 
-It installs the script into `C:\ProgramData\DNSOptimizer`, creates a task named `DNS Optimizer`, runs it with highest privileges as SYSTEM once every 7 days, starts after a missed run, does not wake the computer, and ignores overlapping runs.
+## Logs and history
 
-Remove the task with:
+Runtime files are stored in:
+
+```text
+C:\ProgramData\DNSOptimizer\
+```
+
+Files:
+
+- `DNSOptimizer.ps1` - copy used by the scheduled task
+- `dns-history.csv` - one row per provider and round for spreadsheet analysis
+- `dns-history.json` - structured history
+- `dnsoptimizer.log` - execution and error log
+- `dns-backup.json` - latest pre-change IPv4/IPv6 DNS backup
+
+View recent logs:
 
 ```powershell
-.\Uninstall-DNSOptimizerTask.ps1
+Get-Content -LiteralPath 'C:\ProgramData\DNSOptimizer\dnsoptimizer.log' -Tail 50
 ```
 
-The uninstall script removes only the scheduled task. It leaves logs, history, and the last backup intact.
+View recent history:
 
-## Files and customization
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\DNSOptimizer.ps1 -ShowHistory
+```
 
-Runtime files are stored in `C:\ProgramData\DNSOptimizer`:
+## Updating the installed version
 
-- `DNSOptimizer.ps1` - installed scheduled-task copy
-- `dns-history.csv` and `dns-history.json` - benchmark history
-- `dnsoptimizer.log` - execution log
-- `dns-backup.json` - most recent pre-change DNS configuration
+After downloading a newer version, open PowerShell as Administrator and rerun the installer from the new project folder:
 
-Edit the configuration section near the top of `DNSOptimizer.ps1` to change `$QueriesPerProvider`, `$BenchmarkRounds`, `$MinimumImprovementMs`, `$MinimumImprovementPercent`, `$MaximumFailurePercent`, `$ScheduleDays`, timeout, warm-up, or stability settings. Edit `$DnsProviders` and `$BenchmarkDomains` to customize the test set. The task installer also accepts `-ScheduleDays`; pass the same value when installing a custom interval. If the scheduled task is already installed, copy the updated script to `C:\ProgramData\DNSOptimizer\DNSOptimizer.ps1` or rerun the installer.
+```powershell
+Set-Location 'C:\path\to\dns-optimizer-windows'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-DNSOptimizerTask.ps1 -ScheduleDays 7
+```
 
-The script ignores disconnected and common virtual/VPN adapters, prefers an active physical Ethernet adapter, does not disable IPv6, and does not modify IP addresses, gateways, routes, MTU, DHCP, proxy, firewall, or unrelated network settings.
+This refreshes `C:\ProgramData\DNSOptimizer\DNSOptimizer.ps1` while preserving runtime history and backup files.
+
+## Uninstalling the scheduled task
+
+Run from an elevated PowerShell window:
+
+```powershell
+Set-Location 'C:\path\to\dns-optimizer-windows'
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Uninstall-DNSOptimizerTask.ps1
+```
+
+The uninstaller removes only the `DNS Optimizer` scheduled task. It leaves the logs, history, backup, and installed script in `C:\ProgramData\DNSOptimizer`.
+
+## Customization
+
+Edit the configuration section near the beginning of `DNSOptimizer.ps1`:
+
+```powershell
+$QueriesPerProvider = 40
+$BenchmarkRounds = 3
+$MinimumImprovementMs = 8
+$MinimumImprovementPercent = 15
+$MaximumFailurePercent = 5
+$ScheduleDays = 7
+```
+
+Additional settings control warm-up queries, query timeout, verification queries, and instability rejection. The `$DnsProviders` and `$BenchmarkDomains` lists can also be edited. If the scheduled task is installed, rerun the installer after changing the script so the copy in `C:\ProgramData\DNSOptimizer` is updated.
+
+## Repository files
+
+- `DNSOptimizer.ps1` - main benchmark, selection, apply, verify, rollback, logging, and history logic
+- `Install-DNSOptimizerTask.ps1` - elevated scheduled-task installer
+- `Uninstall-DNSOptimizerTask.ps1` - scheduled-task removal script
+- `README.md` - this guide
+- `.gitignore` - prevents runtime data and local artifacts from being committed
+- `SECURITY.md` - security reporting guidance
+
+## Requirements and limitations
+
+- Windows 10 with Windows PowerShell 5.1.
+- Administrator rights are required only for scheduled-task installation, DNS application, and restore.
+- An active Internet connection is required for benchmarking.
+- The script tests public DNS endpoints from the current machine; results can vary by ISP, router, firewall, and time of day.
 
