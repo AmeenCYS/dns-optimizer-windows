@@ -1,0 +1,14 @@
+# Runtime output: never commit local machine data or DNS backups.
+dns-history.csv
+dns-history.json
+dnsoptimizer.log
+dns-backup.json
+DNSOptimizerData/
+
+# PowerShell/editor and local test artifacts.
+*.tmp
+*.bak
+work/
+.vscode/
+.idea/
+
