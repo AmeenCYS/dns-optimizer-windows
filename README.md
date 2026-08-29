@@ -30,7 +30,7 @@ git clone https://github.com/AmeenCYS/dns-optimizer-windows.git $projectRoot
 Set-Location $projectRoot
 ```
 
-This repository is private. Git must already be authenticated to GitHub (for example through Git Credential Manager) for `git clone` to work. Never put a password or access token directly in the clone URL. If Git is not installed, download the ZIP from the repository page and extract it instead.
+This repository is public, so Git authentication is not required for cloning. Never put a password or access token directly in the clone URL. If Git is not installed, download the ZIP from the repository page and extract it instead.
 
 The project folder must contain:
 
@@ -43,13 +43,7 @@ README.md
 SECURITY.md
 ```
 
-For the original local project folder:
-
-```powershell
-Set-Location 'C:\Users\AmeenCYS\Documents\Codex\2026-08-29\files-pasted-by-the-user-build\outputs'
-```
-
-For another location, replace the path with the folder where the files were extracted.
+If you downloaded the ZIP instead, extract it and change to the extracted folder before running the commands below.
 
 ### 2. Run the first safe test
 
@@ -72,7 +66,7 @@ Review the displayed table before allowing automatic changes.
 Open **Windows PowerShell as Administrator**, move to the project folder, and run:
 
 ```powershell
-Set-Location 'C:\Users\AmeenCYS\Documents\Codex\2026-08-29\files-pasted-by-the-user-build\outputs'
+Set-Location $projectRoot
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-DNSOptimizerTask.ps1 -ScheduleDays 7
 ```
 
