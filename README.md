@@ -2,7 +2,7 @@
 
 Automatic DNS benchmarking and safe DNS switching for Windows 10. The project uses only built-in Windows PowerShell networking commands and does not require third-party software.
 
-هذا البرنامج يفحص أداء مزودي DNS من جهازك الحقيقي، ثم يختار الأفضل بشكل محافظ. الوضع الافتراضي للسكربت هو الفحص فقط، ولا يتم تغيير DNS إلا مع `-Apply` أو `-ForceApply` أو `-Restore`.
+The script benchmarks DNS providers from the actual Windows machine and selects the best eligible provider conservatively. Test-only behavior is the default; DNS changes are possible only with `-Apply`, `-ForceApply`, or `-Restore`.
 
 ## What it does
 
@@ -19,7 +19,20 @@ Automatic DNS benchmarking and safe DNS switching for Windows 10. The project us
 
 ### 1. Put the project in a folder
 
-Download the repository ZIP from GitHub, or clone it if Git is already installed. Extract it so the folder contains:
+Download the repository ZIP from GitHub, or use the command line if Git is installed.
+
+To clone the repository into your user profile:
+
+```powershell
+$projectRoot = Join-Path $env:USERPROFILE 'dns-optimizer-windows'
+Set-Location (Split-Path $projectRoot -Parent)
+git clone https://github.com/AmeenCYS/dns-optimizer-windows.git $projectRoot
+Set-Location $projectRoot
+```
+
+This repository is private. Git must already be authenticated to GitHub (for example through Git Credential Manager) for `git clone` to work. Never put a password or access token directly in the clone URL. If Git is not installed, download the ZIP from the repository page and extract it instead.
+
+The project folder must contain:
 
 ```text
 DNSOptimizer.ps1
